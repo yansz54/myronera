@@ -24,7 +24,7 @@ The program `main.ts` (Node 22, stdlib only) copies `POST.json` to
 byte-identical):
 
 ```
-1c203231063f30d6bdfba80c93c09ae57e031ec0b71f75db6ca8fc958acd0a4b
+17731f1493f4df6dc743c7366e5badb263ee36fe8384b24accaf323f8cf63d19
 ```
 
 Output is the live POST.json byte-for-byte (see the post note below); a
