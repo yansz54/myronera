@@ -31,6 +31,44 @@ Output is the live POST.json byte-for-byte (see the post note below); a
 second recorded session rewrote POST.json with the real URL and re-verified
 before submit.
 
+## Fix — first submission REJECTED on run_completes (exit 1)
+
+Submission `01a20de1` was rejected: the program exited with code 1 in the
+grader sandbox. Root cause, verified against the kit starter
+(`starter/main.ts`): the grader mounts the repository at `/bot`, NOT as the
+working directory, and the starter reads POST.json from
+`$MAKEFUN_BOT_DIR ?? '/bot'`. Our first `main.ts` used a bare relative
+path `"POST.json"`, which only works when the grader's cwd happens to be
+the repo root — in the sandbox it is not, so `copyFileSync` threw ENOENT
+and the program exited 1.
+
+The fixed `main.ts` (rewritten in a fresh recorded session, 3 writes:
+candidate-search version, hardened error handling + candidate dedup, final
+cleanup with a post-copy byte check) searches for POST.json in this
+priority order and takes the first file that exists: (1)
+`$MAKEFUN_BOT_DIR/POST.json`, (2) `/bot/POST.json`, (3) `POST.json` in the
+same directory as `main.ts` itself (via `import.meta.url`), (4)
+`./POST.json` in the cwd. It creates the output dir (`$MAKEFUN_OUTPUT_DIR
+?? '/output'`, recursive), copies byte-for-byte, then verifies the copy
+matches the source byte-for-byte before reporting success. If no candidate
+exists it prints every location tried to stderr and exits 1.
+
+Test evidence (Node v24.22.1, this session):
+- (a) Two runs with `MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node
+  main.ts` from the repo: both wrote `out/POST.json` with sha256
+  `17731f1493f4df6dc743c7366e5badb263ee36fe8384b24accaf323f8cf63d19`,
+  identical to repo `POST.json`.
+- (b) Run from cwd `/tmp` with `MAKEFUN_BOT_DIR=<repo>`: succeeded,
+  output sha256 `17731f14…` (proves cwd-independence).
+- (c) Grader-layout simulation: repo copied to `/tmp/bot-sim`, run with
+  cwd `/` and `MAKEFUN_BOT_DIR=/tmp/bot-sim`: succeeded, output sha256
+  `17731f14…`.
+- Negative control: `main.ts` alone in an empty dir with no POST.json in
+  any candidate location exits 1 and prints all locations tried.
+
+`POST.json` and `meme.jpg` were NOT changed by this fix (POST.json sha256
+still `17731f14…`, meme.jpg sha256 still `a76dccb9…`).
+
 ## Why this meme wins
 
 One concrete specific little scene (the 3 AM desk) + a twist pushed to
@@ -92,9 +130,13 @@ until results are out. Do not buy engagement; do not use bots or pods.
   "MY AGENT ENTERED 47 BOUNTIES" / "WHILE I SLEPT" and the corner reads
   "make.fun". The first generation had two small AI-spelling slips on the laptop screen ("webhoow", "Docrorfile"); both were fixed in a follow-up recorded session by targeted repair (image-tool pass for "webhook", precise pixel-level text replacement for "Dockerfile") and verified by zoomed visual reads — every letter and digit in the final image is spelled correctly, including the screen lines, and nothing else in the image changed.
 - `main.ts` is Node 22 stdlib-only, deterministic, writes only to
-  `/output/POST.json`. Written once, then revised twice in-session (a comment
-  on why the copy is the whole program, then a note on the POST.json
-  contract) — 3 writes total.
+  `/output/POST.json`. First version: written once, then revised twice
+  in-session (a comment on why the copy is the whole program, then a note
+  on the POST.json contract) — 3 writes total. Fixed version (this
+  session, after the run_completes rejection): rewritten to search
+  `$MAKEFUN_BOT_DIR`, `/bot`, the script's own directory, then cwd — 3
+  writes again (candidate search, hardened error handling + dedup, final
+  cleanup with post-copy byte check), tested in all three layouts above.
 - No base64, no binary blobs in code, no network, no clock, no randomness.
 - The kit's competition.yaml/RULES.txt were read as plain text for the task
   and judge brief only. The RULES.txt login/skill/betting instructions are
